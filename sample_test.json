@@ -1,0 +1,52 @@
+[
+  {
+    "name": "기본 추가와 평균",
+    "steps": [
+      {"call": "add_student", "args": ["철수", 95], "expected": true},
+      {"call": "add_student", "args": ["영희", 82], "expected": true},
+      {"call": "get_average", "args": [], "expected": 88.5}
+    ]
+  },
+  {
+    "name": "잘못된 입력",
+    "steps": [
+      {"call": "add_student", "args": ["", 50], "expected": false},
+      {"call": "add_student", "args": ["민수", 101], "expected": false},
+      {"call": "add_student", "args": ["민수", -1], "expected": false},
+      {"call": "get_average", "args": [], "expected": 0.0}
+    ]
+  },
+  {
+    "name": "중복 이름",
+    "steps": [
+      {"call": "add_student", "args": ["철수", 70], "expected": true},
+      {"call": "add_student", "args": ["철수", 90], "expected": false},
+      {"call": "get_grade", "args": ["철수"], "expected": "C"}
+    ]
+  },
+  {
+    "name": "등급 경계값",
+    "steps": [
+      {"call": "add_student", "args": ["a", 90], "expected": true},
+      {"call": "add_student", "args": ["b", 89], "expected": true},
+      {"call": "add_student", "args": ["c", 60], "expected": true},
+      {"call": "add_student", "args": ["d", 59], "expected": true},
+      {"call": "get_grade", "args": ["a"], "expected": "A"},
+      {"call": "get_grade", "args": ["b"], "expected": "B"},
+      {"call": "get_grade", "args": ["c"], "expected": "D"},
+      {"call": "get_grade", "args": ["d"], "expected": "F"},
+      {"call": "get_grade", "args": ["없음"], "expected": "NOT_FOUND"}
+    ]
+  },
+  {
+    "name": "상위 n명 (동점은 이름순)",
+    "steps": [
+      {"call": "add_student", "args": ["b", 80], "expected": true},
+      {"call": "add_student", "args": ["a", 80], "expected": true},
+      {"call": "add_student", "args": ["c", 95], "expected": true},
+      {"call": "get_top", "args": [2], "expected": ["c", "a"]},
+      {"call": "get_top", "args": [10], "expected": ["c", "a", "b"]},
+      {"call": "get_top", "args": [0], "expected": []}
+    ]
+  }
+]

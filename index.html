@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>학생 성적 관리</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #fff; --text: #1d2130; --muted: #6b7185;
+    --line: #e2e5ee; --accent: #4f5bd5; --ok: #1e8e5a; --bad: #c8333a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161d; --card: #1d2029; --text: #e8eaf2; --muted: #9aa0b4;
+      --line: #2e3240; --accent: #8b94ff; --ok: #4cc38a; --bad: #ff6b72;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; line-height: 1.5; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 18px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  input, textarea { font: inherit; color: var(--text); background: var(--bg);
+          border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  input { flex: 1 1 120px; min-width: 0; }
+  textarea { width: 100%; min-height: 140px; font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+           background: var(--accent); color: #fff; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: wait; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+        white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font-size: .85rem; min-height: 2.4em; }
+  .status { font-size: .9rem; color: var(--muted); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .tableWrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>학생 성적 관리 시스템</h1>
+  <p class="sub">이 페이지는 저장소의 <code>solution.py</code>를 브라우저에서 그대로 실행합니다 (Pyodide).</p>
+  <p class="status" id="status">⏳ 파이썬 불러오는 중… (처음엔 5~10초 걸려요)</p>
+
+  <!-- 1. 기능 사용 화면: 문제에 맞게 바꾸는 부분 -->
+  <section class="card">
+    <h2>1. 기능 사용하기</h2>
+    <div class="row">
+      <input id="name" placeholder="이름">
+      <input id="score" type="number" placeholder="점수 (0~100)">
+      <button data-py onclick="addStudent()">학생 추가</button>
+    </div>
+    <div class="row">
+      <input id="gradeName" placeholder="등급 조회할 이름">
+      <button data-py onclick="getGrade()">등급 조회</button>
+    </div>
+    <div class="row">
+      <input id="topN" type="number" placeholder="상위 n명" value="3">
+      <button data-py onclick="getTop()">상위 n명</button>
+      <button data-py onclick="getAverage()">평균 보기</button>
+      <button data-py class="ghost" onclick="resetManager()">초기화</button>
+    </div>
+    <pre id="out1"></pre>
+  </section>
+
+  <!-- 2. 테스트셋 실행: 그대로 재사용 -->
+  <section class="card">
+    <h2>2. 테스트셋 돌려보기</h2>
+    <p class="status">JSON 테스트를 붙여넣거나 샘플을 불러와서 한 번에 채점합니다.</p>
+    <div class="row">
+      <button data-py class="ghost" onclick="loadSample()">sample_test.json 불러오기</button>
+      <button data-py onclick="runTests()">테스트 실행</button>
+    </div>
+    <textarea id="tests" spellcheck="false"></textarea>
+    <div class="tableWrap" id="out2"></div>
+  </section>
+
+  <!-- 3. 파이썬 직접 실행: 그대로 재사용 -->
+  <section class="card">
+    <h2>3. 파이썬 직접 실행</h2>
+    <p class="status"><code>from solution import *</code>가 이미 되어 있어요.</p>
+    <textarea id="code" spellcheck="false">m = StudentManager()
+print(m.add_student("철수", 95))
+print(m.add_student("철수", 80))
+print(m.get_grade("철수"), m.get_average())</textarea>
+    <div class="row" style="margin-top:8px"><button data-py onclick="runCode()">실행</button></div>
+    <pre id="out3"></pre>
+  </section>
+</main>
+
+<script>
+let py = null;
+
+// solution.py 를 받아서 파이썬 안에 파일로 넣고 import
+async function boot() {
+  const status = document.getElementById("status");
+  try {
+    py = await loadPyodide();
+    const src = await (await fetch("solution.py?v=" + Date.now())).text();
+    py.FS.writeFile("/home/pyodide/solution.py", src);
+    py.runPython(`
+import json, io, sys, traceback
+import solution
+from solution import *
+manager = StudentManager()
+
+def to_js(x):
+    return json.dumps(x, ensure_ascii=False)
+
+def call(method, args_json):
+    try:
+        return to_js(getattr(manager, method)(*json.loads(args_json)))
+    except Exception as e:
+        return to_js(f"ERROR: {type(e).__name__}: {e}")
+
+def run_tests(cases_json):
+    cases = json.loads(cases_json)
+    report = []
+    for case in cases:
+        obj = StudentManager()
+        fails = []
+        for s in case["steps"]:
+            try:
+                got = getattr(obj, s["call"])(*s["args"])
+            except Exception as e:
+                got = f"ERROR: {type(e).__name__}: {e}"
+            if got != s["expected"]:
+                fails.append({"call": s["call"], "args": s["args"], "expected": s["expected"], "got": got})
+        report.append({"name": case.get("name", ""), "fails": fails})
+    return to_js(report)
+
+def run_code(code):
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        exec(code, {"__name__": "__main__", **vars(solution)})
+    except Exception:
+        traceback.print_exc(file=buf)
+    finally:
+        sys.stdout = old
+    return buf.getvalue()
+`);
+    status.innerHTML = '<span class="ok">✅ 파이썬 준비 완료 (Python ' + py.runPython("import sys; sys.version.split()[0]") + ")</span>";
+    document.querySelectorAll("[data-py]").forEach(b => b.disabled = false);
+  } catch (e) {
+    status.innerHTML = '<span class="bad">❌ 불러오기 실패: ' + e + "</span>";
+  }
+}
+
+function call(method, args) {
+  const fn = py.globals.get("call");
+  const res = JSON.parse(fn(method, JSON.stringify(args)));
+  fn.destroy();
+  return res;
+}
+function show(id, text) { document.getElementById(id).textContent = text; }
+const val = id => document.getElementById(id).value;
+
+function addStudent() {
+  const ok = call("add_student", [val("name").trim(), parseInt(val("score"), 10)]);
+  show("out1", ok === true ? "✅ 추가 완료" : ok === false ? "❌ 추가 실패 (빈 이름 / 0~100 밖 / 중복)" : ok);
+}
+function getGrade() { show("out1", "등급: " + call("get_grade", [val("gradeName").trim()])); }
+function getTop() { show("out1", "상위: " + JSON.stringify(call("get_top", [parseInt(val("topN"), 10)]))); }
+function getAverage() { show("out1", "평균: " + call("get_average", [])); }
+function resetManager() { py.runPython("manager = StudentManager()"); show("out1", "초기화했어요."); }
+
+async function loadSample() {
+  document.getElementById("tests").value = await (await fetch("sample_test.json?v=" + Date.now())).text();
+}
+
+function runTests() {
+  const out = document.getElementById("out2");
+  let text = val("tests");
+  try { JSON.parse(text); } catch (e) { out.innerHTML = '<p class="bad">JSON 형식 오류: ' + e.message + "</p>"; return; }
+  const fn = py.globals.get("run_tests");
+  const report = JSON.parse(fn(text));
+  fn.destroy();
+  const passed = report.filter(r => r.fails.length === 0).length;
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  let html = `<p><b>${passed} / ${report.length} 통과</b></p><table><tr><th>#</th><th>테스트</th><th>결과</th></tr>`;
+  report.forEach((r, i) => {
+    const detail = r.fails.map(f =>
+      `${esc(f.call)}(${esc(JSON.stringify(f.args).slice(1, -1))}) 기대=${esc(JSON.stringify(f.expected))} 실제=${esc(JSON.stringify(f.got))}`
+    ).join("<br>");
+    html += `<tr><td>${i + 1}</td><td>${esc(r.name)}</td><td>${r.fails.length ? '<span class="bad">❌</span> ' + detail : '<span class="ok">✅ 통과</span>'}</td></tr>`;
+  });
+  out.innerHTML = html + "</table>";
+}
+
+function runCode() {
+  const fn = py.globals.get("run_code");
+  show("out3", fn(val("code")) || "(출력 없음)");
+  fn.destroy();
+}
+
+document.querySelectorAll("[data-py]").forEach(b => b.disabled = true);
+boot();
+</script>
+</body>
+</html>
